@@ -1,0 +1,133 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"></head><body><title>Schattendepot Öl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout wie die Übersicht Einzelaktien: Kopf mit Kurs und Signal, Kontotabelle, Kursgrafik, letzte Trades. */
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --ink: #14181f; --muted: #5a6372; --line: #e1e5ea; --grid: #eceff3;
+  --accent: #2a78d6; --good: #0f7b3e; --bad: #c2362f; --pill: #e8eef6;
+  --display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1216; --surface: #181c22; --ink: #eef1f5; --muted: #a1a9b6; --line: #2a3039; --grid: #222830;
+  --accent: #3987e5; --good: #4cc27c; --bad: #ef6b63; --pill: #233042; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #181c22; --ink: #eef1f5; --muted: #a1a9b6; --line: #2a3039; --grid: #222830;
+  --accent: #3987e5; --good: #4cc27c; --bad: #ef6b63; --pill: #233042; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); margin: 0; }
+.wrap { max-width: 900px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 32px; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font: 700 1.4rem/1.15 var(--display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h3 { font: 500 0.78rem/1.2 var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+.meta { color: var(--muted); font-size: 0.85rem; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.meta b { color: var(--ink); font-weight: 500; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--pill); font-size: 0.78rem; font-weight: 500; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 500; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+tr:last-child td { border-bottom: 0; }
+#konten tbody tr:first-child td { font-weight: 500; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px 20px; }
+.kpis > div { display: grid; align-content: start; }
+.label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.gross { font-size: 1.35rem; font-weight: 500; }
+.klein { font-size: 0.78rem; color: var(--muted); }
+.chart { position: relative; height: 200px; margin-top: 8px; }
+.panelkopf { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hinweis { color: var(--muted); font-size: 0.82rem; margin: 8px 0 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Schattendepot Öl (Brent-ETC)</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section class="panel kpis" id="kpis" aria-label="Kurs und Signal"></section>
+
+  <section class="panel" aria-labelledby="kt">
+    <div class="panelkopf"><h3 id="kt">Konten: Veränderung zum Startkapital von 10'000 CHF</h3></div>
+    <div class="scroll"><table id="konten"></table></div>
+    <p class="hinweis">● investiert, ○ Cash, ▼ short. Enthält Kursentwicklung, Gebühren, Wechselkosten CHF→USD und die Bewegung des Dollars. Vergleich: Zeile 1 Halten.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="ku">
+    <div class="panelkopf"><h3 id="ku">BRNT.L in Prozent seit Start</h3></div>
+    <div class="chart"><canvas id="verlauf" aria-label="Kurs BRNT.L in Prozent seit Start"></canvas></div>
+  </section>
+
+  <section class="panel" aria-labelledby="tr">
+    <div class="panelkopf"><h3 id="tr">Letzte Trades</h3></div>
+    <div class="scroll"><table id="trades"></table></div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const D = {"stand": "01.10.2026 20:33", "modus": "Probe", "usdchf": 0.8321, "start": "28.09.2026", "letzter_lauf": "01.10. 17:07", "kurs": 100.1, "tag_pct": 1.9, "start_kurs": 98.46, "seit_start_pct": 1.67, "verlauf_zeit": ["28.09. 16:50", "28.09. 16:55", "28.09. 17:00", "28.09. 17:05", "28.09. 17:10", "28.09. 17:15", "28.09. 17:20", "28.09. 17:25", "29.09. 09:00", "29.09. 09:10", "29.09. 09:35", "29.09. 09:45", "29.09. 09:50", "29.09. 09:55", "29.09. 10:10", "29.09. 10:15", "29.09. 10:20", "29.09. 11:05", "29.09. 11:15", "29.09. 11:30", "29.09. 11:35", "29.09. 11:40", "29.09. 11:45", "29.09. 11:50", "29.09. 11:55", "29.09. 12:00", "29.09. 12:10", "29.09. 12:15", "29.09. 12:20", "29.09. 12:25", "29.09. 12:30", "29.09. 12:35", "29.09. 12:50", "29.09. 13:00", "29.09. 13:05", "29.09. 13:10", "29.09. 13:15", "29.09. 13:30", "29.09. 13:40", "29.09. 13:45", "29.09. 13:50", "29.09. 14:00", "29.09. 14:05", "29.09. 14:15", "29.09. 14:20", "29.09. 14:25", "29.09. 14:30", "29.09. 14:35", "29.09. 14:40", "29.09. 14:45", "29.09. 14:50", "29.09. 15:05", "29.09. 15:10", "29.09. 15:15", "29.09. 15:20", "29.09. 15:30", "29.09. 15:40", "29.09. 15:45", "29.09. 15:50", "29.09. 15:55", "29.09. 16:00", "29.09. 16:05", "29.09. 16:10", "29.09. 16:15", "29.09. 16:25", "29.09. 16:30", "29.09. 16:35", "29.09. 16:45", "29.09. 16:55", "29.09. 17:00", "29.09. 17:05", "29.09. 17:10", "29.09. 17:15", "29.09. 17:20", "29.09. 17:25", "30.09. 09:00", "30.09. 09:10", "30.09. 09:15", "30.09. 09:20", "30.09. 09:25", "30.09. 09:30", "30.09. 09:50", "30.09. 10:25", "30.09. 10:40", "30.09. 10:45", "30.09. 10:50", "30.09. 11:00", "30.09. 11:05", "30.09. 11:10", "30.09. 11:15", "30.09. 11:25", "30.09. 11:30", "30.09. 11:35", "30.09. 11:50", "30.09. 12:00", "30.09. 12:10", "30.09. 12:15", "30.09. 12:20", "30.09. 12:25", "30.09. 12:35", "30.09. 12:45", "30.09. 12:55", "30.09. 13:00", "30.09. 13:05", "30.09. 13:10", "30.09. 13:30", "30.09. 13:35", "30.09. 13:40", "30.09. 13:45", "30.09. 13:50", "30.09. 13:55", "30.09. 14:00", "30.09. 14:05", "30.09. 14:10", "30.09. 14:15", "30.09. 14:20", "30.09. 14:25", "30.09. 14:30", "30.09. 14:35", "30.09. 14:40", "30.09. 14:45", "30.09. 14:50", "30.09. 14:55", "30.09. 15:00", "30.09. 15:05", "30.09. 15:10", "30.09. 15:15", "30.09. 15:20", "30.09. 15:30", "30.09. 15:35", "30.09. 15:40", "30.09. 15:45", "30.09. 15:50", "30.09. 15:55", "30.09. 16:00", "30.09. 16:05", "30.09. 16:10", "30.09. 16:15", "30.09. 16:20", "30.09. 16:25", "30.09. 16:30", "30.09. 16:35", "30.09. 16:40", "30.09. 16:45", "30.09. 16:50", "30.09. 16:55", "30.09. 17:00", "30.09. 17:05", "30.09. 17:10", "30.09. 17:15", "30.09. 17:20", "30.09. 17:25", "01.10. 09:00", "01.10. 09:05", "01.10. 09:10", "01.10. 09:15", "01.10. 09:20", "01.10. 09:25", "01.10. 09:30", "01.10. 09:35", "01.10. 09:40", "01.10. 09:45", "01.10. 09:55", "01.10. 10:00", "01.10. 10:05", "01.10. 10:20", "01.10. 10:25", "01.10. 10:30", "01.10. 10:35", "01.10. 10:40", "01.10. 10:55", "01.10. 11:05", "01.10. 11:10", "01.10. 11:20", "01.10. 11:25", "01.10. 11:35", "01.10. 11:40", "01.10. 11:45", "01.10. 11:50", "01.10. 11:55", "01.10. 12:10", "01.10. 12:30", "01.10. 12:40", "01.10. 13:00", "01.10. 13:05", "01.10. 13:20", "01.10. 13:45", "01.10. 13:55", "01.10. 14:05", "01.10. 14:10", "01.10. 14:15", "01.10. 14:25", "01.10. 14:35", "01.10. 14:40", "01.10. 14:45", "01.10. 15:10", "01.10. 15:35", "01.10. 15:40", "01.10. 15:45", "01.10. 15:50", "01.10. 16:00", "01.10. 16:20", "01.10. 16:25", "01.10. 16:30", "01.10. 16:50", "01.10. 16:55", "01.10. 17:00", "01.10. 17:05", "01.10. 17:10", "01.10. 17:15", "01.10. 17:20", "01.10. 17:25"], "verlauf_pct": [0.0, 0.4, 0.33, 0.13, -0.05, -0.05, 0.12, 0.04, -0.37, -0.74, -1.32, -1.28, -1.27, -1.14, -1.31, -1.71, -1.76, -1.94, -1.74, -1.89, -1.99, -2.3, -2.36, -2.13, -2.16, -2.3, -2.25, -2.17, -2.3, -2.22, -2.3, -2.34, -2.57, -2.65, -2.75, -2.84, -2.65, -2.95, -2.54, -3.5, -2.9, -3.38, -3.37, -3.2, -3.22, -3.25, -3.44, -3.28, -3.51, -3.27, -3.33, -3.55, -3.3, -3.27, -3.32, -3.21, -3.09, -2.89, -3.08, -3.06, -2.8, -2.75, -2.63, -2.71, -3.02, -2.87, -2.7, -2.62, -2.64, -2.45, -2.37, -2.37, -2.4, -2.45, -2.42, -2.97, -3.11, -3.51, -3.51, -3.11, -3.26, -3.03, -2.16, -2.21, -2.32, -1.94, -1.67, -1.55, -1.48, -1.43, -1.32, -1.93, -1.78, -1.58, -1.66, -1.53, -1.49, -1.27, -1.57, -1.71, -1.48, -1.46, -1.32, -1.24, -1.33, -1.18, -1.16, -1.12, -0.98, -1.06, -1.07, -1.12, -1.18, -1.26, -1.05, -1.17, -1.23, -1.24, -1.08, -1.03, -0.96, -1.09, -1.13, -1.36, -1.04, -0.87, -0.59, -0.46, -0.3, -0.34, -0.37, -0.37, -0.49, -0.51, -0.65, -0.62, -0.41, -0.16, -0.12, -0.15, -0.31, -0.39, -0.24, -0.17, -0.22, -0.05, -0.13, -0.13, -0.05, -0.17, -0.13, -0.23, -0.74, -0.67, -0.27, 0.09, 0.09, 0.44, 0.05, 0.0, -0.12, -0.15, 0.09, 0.24, 0.21, 0.38, 0.39, 0.58, 0.61, 0.64, 0.83, 0.74, 0.86, 0.54, 0.58, 0.7, 0.98, 0.93, 0.83, 0.75, 0.72, 0.46, -0.05, 0.13, 0.75, 0.83, 0.5, 0.26, 0.23, 0.13, 0.09, 0.25, 0.28, 0.29, 0.2, -0.01, 0.6, 0.91, 0.89, 1.11, 1.23, 1.06, 1.05, 0.94, 1.26, 1.21, 1.43, 1.44, 1.64, 1.77, 1.84, 1.67], "signal_24h": 27, "schwelle": 10, "nachrichten_aus": false, "konten": [{"id": "1_halten", "name": "1 Halten", "wert": 10237.38, "position": 1.0, "rendite": 2.37, "vs_halten": 0.0}, {"id": "2_halten_nachrichten", "name": "2 Halten + Nachrichten", "wert": 10237.38, "position": 1.0, "rendite": 2.37, "vs_halten": 0.0}, {"id": "3_volschutz", "name": "3 Volatilitätsschutz", "wert": 10237.38, "position": 1.0, "rendite": 2.37, "vs_halten": 0.0}, {"id": "4_volschutz_nachrichten", "name": "4 Volatilitätsschutz + Nachrichten", "wert": 10237.38, "position": 1.0, "rendite": 2.37, "vs_halten": 0.0}, {"id": "5_nachrichten_long_short", "name": "5 Nachrichten long/short (CFD)", "wert": 10267.72, "position": 1.0, "rendite": 2.68, "vs_halten": 30.34}, {"id": "6_ereignis_etc", "name": "6 Ereignisgesteuert (ETC)", "wert": 10124.97, "position": 1.0, "rendite": 1.25, "vs_halten": -112.41}, {"id": "7_ereignis_long_short", "name": "7 Ereignisgesteuert long/short (CFD)", "wert": 10187.65, "position": 1.0, "rendite": 1.88, "vs_halten": -49.73}, {"id": "8_nachrichten_cot", "name": "8 Nachrichten + COT", "wert": 10239.57, "position": 1.0, "rendite": 2.4, "vs_halten": 2.19}, {"id": "9_signalstaerke", "name": "9 Signalstärke long/short (CFD)", "wert": 10388.43, "position": 1.0, "rendite": 3.88, "vs_halten": 151.05}], "trades": [{"zeit": "30.09. 16:17", "konto": "6 Ereignisgesteuert (ETC)", "art": "KAUF", "kurs": 98.15}, {"zeit": "30.09. 16:17", "konto": "7 Ereignisgesteuert long/short (CFD)", "art": "SHORT schliessen + KAUF", "kurs": 98.15}, {"zeit": "30.09. 15:48", "konto": "6 Ereignisgesteuert (ETC)", "art": "VERKAUF", "kurs": 98.07}, {"zeit": "30.09. 15:48", "konto": "7 Ereignisgesteuert long/short (CFD)", "art": "VERKAUF + SHORT eröffnen", "kurs": 98.07}, {"zeit": "29.09. 16:02", "konto": "9 Signalstärke long/short (CFD)", "art": "KAUF", "kurs": 95.71}, {"zeit": "29.09. 10:13", "konto": "6 Ereignisgesteuert (ETC)", "art": "KAUF", "kurs": 97.17}, {"zeit": "29.09. 10:13", "konto": "7 Ereignisgesteuert long/short (CFD)", "art": "KAUF", "kurs": 97.17}, {"zeit": "29.09. 10:07", "konto": "8 Nachrichten + COT", "art": "KAUF", "kurs": 97.21}]};
+const fmt = (v, d = 2) => v.toLocaleString("de-CH", { minimumFractionDigits: d, maximumFractionDigits: d });
+const sign = (v, d = 2) => (v > 0 ? "+" : v < 0 ? "−" : "±") + fmt(Math.abs(v), d);
+const cls = v => v > 0.005 ? "pos" : v < -0.005 ? "neg" : "";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const POS = { "1": "●", "0": "○", "-1": "▼" };
+
+document.getElementById("meta").innerHTML =
+  `<span>Stand <b>${D.stand}</b></span><span>Letzte Prüfung <b>${D.letzter_lauf}</b></span><span class="pill">${D.modus}</span>`;
+
+// Kurs und Signal
+const s = D.signal_24h, st = s >= D.schwelle ? "long" : s <= -D.schwelle ? "short" : "Cash";
+document.getElementById("kpis").innerHTML = `
+  <div><span class="label">BRNT.L</span><span class="gross num">${fmt(D.kurs)} USD</span><span class="klein">Start ${D.start_kurs === null ? "–" : fmt(D.start_kurs)} (${D.start})</span></div>
+  <div><span class="label">Seit Start</span><span class="gross num ${cls(D.seit_start_pct)}">${sign(D.seit_start_pct)} %</span><span class="klein num">heute ${sign(D.tag_pct)} %</span></div>
+  <div><span class="label">Signal 24 h</span><span class="gross num ${cls(s)}">${s > 0 ? "+" : ""}${s}</span><span class="klein">Konto 9: ${st} (Schwelle ±${D.schwelle})</span></div>
+  <div><span class="label">Nachrichtenregel</span><span class="gross">${D.nachrichten_aus ? "aus" : "drin"}</span><span class="klein num">USD/CHF ${fmt(D.usdchf, 4)}</span></div>`;
+
+// Konten
+let h = `<thead><tr><th>Konto</th><th>Veränderung</th><th>Wert CHF</th><th>vs. Halten</th></tr></thead><tbody>`;
+for (const k of D.konten) {
+  h += `<tr><td>${k.name.replace(/ \(.*\)/, "")}</td>
+    <td class="num"><span class="${cls(k.rendite)}">${POS[String(k.position)]} ${sign(k.rendite)} %</span></td>
+    <td class="num">${fmt(k.wert, 0)}</td>
+    <td class="num ${cls(k.vs_halten)}">${k.id === "1_halten" || k.vs_halten === null ? "–" : sign(k.vs_halten, 0)}</td></tr>`;
+}
+document.getElementById("konten").innerHTML = h + "</tbody>";
+
+// Trades
+document.getElementById("trades").innerHTML = D.trades.length
+  ? `<tbody>` + D.trades.map(x => `<tr><td class="num">${x.zeit}</td><td>${x.konto.replace(/ \(.*\)/, "")}</td><td>${x.art}</td><td class="num">${fmt(x.kurs)} USD</td></tr>`).join("") + "</tbody>"
+  : `<tbody><tr><td>Noch keine Trades.</td></tr></tbody>`;
+
+// Grafik
+let chart;
+function zeichne() {
+  if (chart) chart.destroy();
+  const ink = css("--muted"), grid = css("--grid");
+  chart = new Chart(document.getElementById("verlauf"), {
+    type: "line",
+    data: { labels: D.verlauf_zeit, datasets: [{ label: "BRNT.L", data: D.verlauf_pct, borderColor: css("--accent"), backgroundColor: css("--accent") }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${sign(c.parsed.y)} % seit Start` } } },
+      scales: {
+        x: { ticks: { color: ink, maxTicksLimit: 5, maxRotation: 0, font: { family: css("--mono"), size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: ink, maxTicksLimit: 5, font: { family: css("--mono"), size: 10 }, callback: v => sign(v, 1) + " %" }, grid: { color: c => c.tick.value === 0 ? css("--muted") : grid }, border: { display: false } }
+      },
+      elements: { point: { radius: 0, hoverRadius: 4 }, line: { borderWidth: 2, tension: 0 } }
+    }
+  });
+}
+if (window.Chart) {
+  zeichne();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", zeichne);
+  new MutationObserver(zeichne).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+}
+</script>
+</body></html>
